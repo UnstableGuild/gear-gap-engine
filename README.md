@@ -49,9 +49,16 @@ Private repo, so a git+ssh dependency pinned to a tag — no registry to run:
 
 ```toml
 dependencies = [
-  "gear-gap-engine @ git+ssh://git@github.com/UnstableGuild/gear-gap-engine@v1.0.0",
+  "gear-gap-engine @ git+ssh://git@github-liqiud/UnstableGuild/gear-gap-engine@v1.0.0",
 ]
 ```
+
+`github-liqiud` is the SSH host alias this machine uses for the guild account and
+is what this repo's own remote points at; the form above is the one that has
+actually been installed and imported, not the one that looks right. Anywhere
+without that alias — a CI runner, an image build — use
+`git+ssh://git@github.com/UnstableGuild/…` with a deploy key, and check it
+resolves before relying on it.
 
 **Pin a tag, never a branch.** A floating `@main` reintroduces exactly the skew
 the version contract exists to prevent, silently, at whatever moment a service
