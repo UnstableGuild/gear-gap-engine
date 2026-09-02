@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gear-gap-engine"
+dynamic = ["version"]
+description = "The gear-gap rules: pure, stdlib-only, shared by every service."
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]
+
+[tool.hatch.version]
+path = "src/gear_gap_engine/version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gear_gap_engine"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+target-version = "py312"
+
+# The same ruleset as unstable-gear-gap, deliberately. Adding SIM here flagged
+# two `CONSTANT == {...}` assertions in the copied tests as Yoda conditions --
+# a false positive on clear test code, and editing tests to satisfy a rule the
+# rest of the family does not run is the wrong way round.
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["gear_gap_engine"]
+mypy_path = "src"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+strict = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
