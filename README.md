@@ -64,6 +64,50 @@ resolves before relying on it.
 the version contract exists to prevent, silently, at whatever moment a service
 happens to rebuild its image.
 
+## Consuming it from CI — READ THIS BEFORE CREATING A NEW SERVICE
+
+This repo is **private**, so a build anywhere other than a developer's machine
+needs credentials to fetch it. Actions' `GITHUB_TOKEN` is scoped to its own
+repository and **cannot** clone this one, so every consumer needs the deploy key
+below. Enabled org-wide and provisioned on 2026-09-02, approved by John; the
+alternatives were a person-scoped PAT (broader, and it expires) or making this
+repo public (which he declined).
+
+**Adding a new consumer repo — all of it:**
+
+1. The read-only deploy key already exists on this repo, one per consumer, named
+   for its consumer: `gear-gap-reference CI (read-only)`. **Add a new key named
+   for the new consumer.** Six identically-named keys are unrotatable in
+   practice because nobody can tell which is which.
+
+   ```
+   ssh-keygen -t ed25519 -N '' -C '<consumer> CI -> gear-gap-engine (read-only)' -f /tmp/k
+   gh repo deploy-key add /tmp/k.pub --repo UnstableGuild/gear-gap-engine      --title '<consumer> CI (read-only)'
+   gh secret set ENGINE_DEPLOY_KEY --repo UnstableGuild/<consumer> < /tmp/k
+   rm -f /tmp/k /tmp/k.pub          # the private half must not outlive this
+   ```
+
+2. **Secret name: `ENGINE_DEPLOY_KEY`**, on the *consumer* repo. It holds the
+   **private** half; the public half is the deploy key here. Read-only always —
+   consumers fetch, they never push.
+
+3. The pin uses the `github-liqiud` SSH **host alias**, which exists in a
+   developer's `~/.ssh/config` and nowhere else. CI and the Dockerfile must both
+   teach that alias to their environment, or the same pin that works locally
+   fails everywhere else. `gear-gap-reference` is the worked example.
+
+**WHAT IT LOOKS LIKE WHEN THE SECRET IS MISSING**, because this is the part that
+costs an hour: `pip install` fails cloning the dependency with a permission or
+host-key error that reads as a **network problem**, not a credential one. The
+build looks broken, the registry looks down, and nothing says "this repo has no
+`ENGINE_DEPLOY_KEY`". `gear-gap-reference`'s workflow checks for the secret
+first and fails with that sentence, so copy that step rather than debugging the
+symptom.
+
+**These keys are not rotated on a schedule and must not be.** There is no
+automation for it, and a key that silently expires is exactly the failure this
+project keeps paying for. Rotation is a deliberate act.
+
 ## Public surface
 
 `__all__` in `__init__.py` is curated, not "whatever happens to be importable" —
