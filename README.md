@@ -129,6 +129,15 @@ deploy key, so it is the one document that cannot be missed.
 | Image name in CI | `.github/workflows/build.yaml` `IMAGE:` | The new service overwrites its neighbour's published image |
 | Repo name and description | `gh repo create` | Cosmetic |
 | `.env` | regenerate — never copy a neighbour's passwords | Shared credentials across services |
+| **Keep `mise run gate`** | `.mise.toml` — every repo has it; do not drop it | See below |
+
+**`mise run gate` runs ruff, mypy and the tests bare, in order, stopping at the
+first failure.** It exists because a gate piped into `tail` reports the
+*filter's* exit status, so a failing lint reads as success and a broken commit
+gets made while the output looks fine — that happened three times in one day.
+The fix is not a stronger rule but a shape: the short output somebody wanted is
+what this already produces, so there is nothing left to pipe. **Run it bare and
+let it fail.**
 
 **Why a checklist and not a template repo.** A template is a thing to maintain,
 it drifts from whatever the newest service actually does, and it would carry the
