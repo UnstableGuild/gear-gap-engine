@@ -127,6 +127,7 @@ deploy key, so it is the one document that cannot be missed.
 | Package name | `pyproject.toml`, `src/<pkg>/`, every import | Loud, immediately |
 | `test-db` task | `.mise.toml` — the copy already has one; **edit it, do not append** | Loud: mise refuses a duplicate key |
 | Schema and role names | the migration, `roles.py`/`reader.py`, `.env.example` | Two services fighting over one role name |
+| **`CREATEROLE` on the owner** | granted on the database, outside this repo, before provisioning runs | **CrashLoop.** Provisioning connects as the owner and CREATE/ALTERs the narrowed role; without `CREATEROLE` that fails with `permission denied to create role`. On Postgres 16+ it is scoped to roles the grantor created, so this is a grant per new service, not a one-time cluster setting |
 | `ENGINE_DEPLOY_KEY` | `gh secret set` on the new repo, plus a **new** deploy key here named for it | A clone error in CI that reads as a network problem |
 | Image name in CI | `.github/workflows/build.yaml` `IMAGE:` | The new service overwrites its neighbour's published image |
 | Repo name and description | `gh repo create` | Cosmetic |
@@ -144,8 +145,8 @@ let it fail.**
 **Why a checklist and not a template repo.** A template is a thing to maintain,
 it drifts from whatever the newest service actually does, and it would carry the
 same stale ports and names into every clone — it makes this list necessary
-rather than unnecessary. The list is ten rows and lives next to the credential
-step nobody can skip.
+rather than unnecessary. The list is eleven rows and lives next to the
+credential step nobody can skip.
 
 ## Public surface
 
