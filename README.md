@@ -123,6 +123,7 @@ deploy key, so it is the one document that cannot be missed.
 |---|---|---|
 | **Published database port** | `compose.yaml` `ports:` and the `sed` in `.mise.toml`'s `test-db` | **SILENT.** The new service reads and writes its neighbour's database |
 | **Dead config and fixtures from the neighbour** | any module or fixture the clone didn't ask for — a config class for a concern this service doesn't have, `conftest.py` fixtures pointing at a `fixtures/` directory that was never copied | **SILENT, and worse than the port row: it is inert until someone reads it.** Nothing breaks, nothing fails a test, and a future reader believes the service has a token path or fixtures it does not. Grep the diff against the neighbour for anything your new service has no reason to import |
+| **Removing or changing a dependency** | `pyproject.toml` | **`pip install -e .` never uninstalls.** Dropping a line from `dependencies` leaves the package sitting in your existing venv, so the local gate stays green while it is quietly gating an environment that no longer matches the file. Verify by rebuilding the venv from scratch (`rm -rf .venv-*/`, reinstall) before trusting a removal — CI already does this on every run, which is why gear-gap-intent's stage 3 passed locally and failed there: `httpx` looked unused by this service's own code and was removed entirely, but `fastapi.testclient` (used by the test suite) needs an HTTP client to exist regardless. "This service's code never touches a third party" and "this repo needs no HTTP client dependency" are different claims — the fix was `httpx` back as a **dev-only** dependency, not a runtime one |
 | Package name | `pyproject.toml`, `src/<pkg>/`, every import | Loud, immediately |
 | `test-db` task | `.mise.toml` — the copy already has one; **edit it, do not append** | Loud: mise refuses a duplicate key |
 | Schema and role names | the migration, `roles.py`/`reader.py`, `.env.example` | Two services fighting over one role name |
@@ -143,7 +144,7 @@ let it fail.**
 **Why a checklist and not a template repo.** A template is a thing to maintain,
 it drifts from whatever the newest service actually does, and it would carry the
 same stale ports and names into every clone — it makes this list necessary
-rather than unnecessary. The list is nine rows and lives next to the credential
+rather than unnecessary. The list is ten rows and lives next to the credential
 step nobody can skip.
 
 ## Public surface
