@@ -17,6 +17,9 @@ path = "src/gear_gap_engine/version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/gear_gap_engine"]
+# py.typed must be IN the wheel or the marker exists only in the source tree and
+# consumers still see Any. Found by a consumer's mypy, not by this repo's.
+artifacts = ["src/gear_gap_engine/py.typed"]
 
 [tool.ruff]
 line-length = 100

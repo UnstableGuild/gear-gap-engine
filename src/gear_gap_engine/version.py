@@ -24,7 +24,7 @@ change, because the bundle on disk was written with the old one.
 
 from __future__ import annotations
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 
 class IncompatibleBundle(RuntimeError):

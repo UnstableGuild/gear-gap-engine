@@ -92,3 +92,13 @@ def test_the_version_is_semver_shaped():
     parts = gear_gap_engine.__version__.split(".")
     assert len(parts) == 3
     assert all(p.isdigit() for p in parts)
+
+
+def test_the_package_advertises_its_types():
+    """Without a py.typed marker IN THE WHEEL, a consumer running mypy sees Any
+    for everything this package exports -- the types exist and are unusable.
+    Found by gear-gap-reference's type check, not by this repo's own."""
+    import pathlib
+
+    marker = pathlib.Path(gear_gap_engine.__file__).parent / "py.typed"
+    assert marker.exists(), "py.typed is missing; consumers get no types"
