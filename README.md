@@ -108,6 +108,34 @@ symptom.
 automation for it, and a key that silently expires is exactly the failure this
 project keeps paying for. Rotation is a deliberate act.
 
+## Cloning a service repo — CHANGE ALL OF THIS
+
+Service repos are made by copying a neighbour, because that is faster than
+assembling one. The copy arrives carrying the neighbour's identity, and **most of
+it fails loudly while one item fails silently**: two services sharing a published
+database port on one machine means the new one quietly talks to the old one's
+database. That costs an evening; everything else on this list costs minutes.
+
+This lives here because every new service must read this file anyway for the
+deploy key, so it is the one document that cannot be missed.
+
+| Change | Where | If you forget |
+|---|---|---|
+| **Published database port** | `compose.yaml` `ports:` and the `sed` in `.mise.toml`'s `test-db` | **SILENT.** The new service reads and writes its neighbour's database |
+| Package name | `pyproject.toml`, `src/<pkg>/`, every import | Loud, immediately |
+| `test-db` task | `.mise.toml` — the copy already has one; **edit it, do not append** | Loud: mise refuses a duplicate key |
+| Schema and role names | the migration, `roles.py`/`reader.py`, `.env.example` | Two services fighting over one role name |
+| `ENGINE_DEPLOY_KEY` | `gh secret set` on the new repo, plus a **new** deploy key here named for it | A clone error in CI that reads as a network problem |
+| Image name in CI | `.github/workflows/build.yaml` `IMAGE:` | The new service overwrites its neighbour's published image |
+| Repo name and description | `gh repo create` | Cosmetic |
+| `.env` | regenerate — never copy a neighbour's passwords | Shared credentials across services |
+
+**Why a checklist and not a template repo.** A template is a thing to maintain,
+it drifts from whatever the newest service actually does, and it would carry the
+same stale ports and names into every clone — it makes this list necessary
+rather than unnecessary. The list is eight rows and lives next to the credential
+step nobody can skip.
+
 ## Public surface
 
 `__all__` in `__init__.py` is curated, not "whatever happens to be importable" —
