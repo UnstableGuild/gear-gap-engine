@@ -122,6 +122,7 @@ deploy key, so it is the one document that cannot be missed.
 | Change | Where | If you forget |
 |---|---|---|
 | **Published database port** | `compose.yaml` `ports:` and the `sed` in `.mise.toml`'s `test-db` | **SILENT.** The new service reads and writes its neighbour's database |
+| **Dead config and fixtures from the neighbour** | any module or fixture the clone didn't ask for — a config class for a concern this service doesn't have, `conftest.py` fixtures pointing at a `fixtures/` directory that was never copied | **SILENT, and worse than the port row: it is inert until someone reads it.** Nothing breaks, nothing fails a test, and a future reader believes the service has a token path or fixtures it does not. Grep the diff against the neighbour for anything your new service has no reason to import |
 | Package name | `pyproject.toml`, `src/<pkg>/`, every import | Loud, immediately |
 | `test-db` task | `.mise.toml` — the copy already has one; **edit it, do not append** | Loud: mise refuses a duplicate key |
 | Schema and role names | the migration, `roles.py`/`reader.py`, `.env.example` | Two services fighting over one role name |
@@ -142,7 +143,7 @@ let it fail.**
 **Why a checklist and not a template repo.** A template is a thing to maintain,
 it drifts from whatever the newest service actually does, and it would carry the
 same stale ports and names into every clone — it makes this list necessary
-rather than unnecessary. The list is eight rows and lives next to the credential
+rather than unnecessary. The list is nine rows and lives next to the credential
 step nobody can skip.
 
 ## Public surface
