@@ -1,0 +1,10 @@
+# Keeps GitHub Actions pins from rotting. The build job's actions are
+# SHA-pinned deliberately (a tag can move to a different commit; a SHA
+# cannot) -- Dependabot is what re-pins them to a new SHA when a real
+# release ships, so the pin is a security control, not a version freeze.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
