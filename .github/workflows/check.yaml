@@ -1,6 +1,6 @@
 # Check the code. No build job -- this is a pure library (no image, no
 # Dockerfile, nothing published to a registry), consumed by the other four
-# services over a git+ssh pin, never pulled as a container.
+# services over a git+https pin, never pulled as a container.
 #
 # THIS REPO HAD NO CI AT ALL BEFORE THIS FILE, the only one of five without
 # it. 83 test functions across several files, run by hand on every change
@@ -40,14 +40,21 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      # `--locked` refuses to re-resolve: if pyproject.toml and uv.lock ever
+      # disagree, this fails loudly instead of installing something nobody
+      # reviewed. Every dependency here (pytest/ruff/mypy and their own
+      # transitive deps) is hash-verified against uv.lock.
       - name: Install
-        run: pip install -e ".[dev]"
+        run: uv sync --extra dev --locked
 
       - name: Tests
-        run: pytest
+        run: uv run pytest
 
       - name: Lint
-        run: ruff check .
+        run: uv run ruff check .
 
       - name: Types
-        run: mypy src
+        run: uv run mypy src
