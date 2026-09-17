@@ -63,8 +63,15 @@ def test_a_different_major_is_refused():
     """slot_key and fingerprint decide how items are KEYED INTO a bundle and the
     matcher reads those keys back. Skew writes under one scheme and reads under
     another: every lookup misses and nothing looks unhealthy."""
+    # Derived from the real current version, not a hard-coded literal -- a
+    # literal "a different major" goes stale the moment this engine's OWN
+    # major changes and starts silently testing nothing (this exact bug,
+    # caught fixing it: the literal here was "2.0.0" when the engine was
+    # 1.x, and would have started asserting the SAME major once it became
+    # 2.x, without the test ever going red to say so).
+    major = int(gear_gap_engine.__version__.split(".")[0])
     with pytest.raises(IncompatibleBundle) as caught:
-        assert_bundle_compatible("2.0.0")
+        assert_bundle_compatible(f"{major + 1}.0.0")
     assert "rebuilt" in str(caught.value)
 
 

@@ -135,6 +135,14 @@ CATALYST = "Catalyst"
 # two-way test below from firing on a fragment.
 _MIN_MATCH = 6
 
+# A craft with no profession named. Method.gg's own Source column says only
+# "Crafted" (or "Crafting") -- Icy Veins always names the profession
+# ("Crafted by Blacksmithing"), which is why PROFESSIONS alone caught every
+# craft source this engine had ever seen before a second guide provider
+# existed to disagree. Whole-word, case-insensitive: "Crafted" and "crafting"
+# both count, "Handcrafted" and "Stagecraft" do not.
+_BARE_CRAFT = re.compile(r"\bcraft(?:ed|ing)\b", re.IGNORECASE)
+
 # Anything assess() can return. A paired slot is one row about two slots.
 
 
@@ -640,6 +648,10 @@ def make_source_parser(
         for profession in PROFESSIONS:
             if profession in raw:
                 return SourceRef("craft", profession, catalyst)
+        if _BARE_CRAFT.search(raw):
+            # A real craft source, just naming no profession -- `name=None`
+            # is the honest state here, not a guess at which profession.
+            return SourceRef("craft", None, catalyst)
 
         key = _match_key(raw)
         found = names(key, raid_keys)

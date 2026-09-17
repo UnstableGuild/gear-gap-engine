@@ -292,6 +292,66 @@ def test_a_profession_wins_over_a_location_in_the_same_line():
     assert parse("Crafted by Blacksmithing, drops in Kings' Rest").kind == "craft"
 
 
+def test_a_bare_crafted_with_no_profession_still_classifies_as_craft():
+    """Method.gg's own Source column, verified live 2026-09-17: just
+    "Crafted", no profession named -- Icy Veins always names one, which is
+    why PROFESSIONS alone caught every craft source this engine had ever
+    seen before a second guide provider existed to disagree."""
+    parse = make_source_parser(["Kings' Rest"], [])
+    ref = parse("Crafted")
+    assert ref.kind == "craft"
+    assert ref.name is None
+
+
+def test_bare_crafting_also_classifies_case_insensitively():
+    parse = make_source_parser(["Kings' Rest"], [])
+    assert parse("crafting").kind == "craft"
+    assert parse("CRAFTING").kind == "craft"
+
+
+def test_a_named_profession_still_wins_over_the_bare_word():
+    """The bare-craft fallback must never shadow a named profession -- it
+    only fires when PROFESSIONS' own loop found nothing."""
+    parse = make_source_parser(["Kings' Rest"], [])
+    ref = parse("Crafted by Jewelcrafting")
+    assert ref.kind == "craft"
+    assert ref.name == "Jewelcrafting"
+
+
+def test_a_word_merely_containing_craft_does_not_false_positive():
+    """Whole-word only -- "Handcrafted" and "Stagecraft" are not this
+    engine's business to invent a craft source out of."""
+    parse = make_source_parser(["Kings' Rest"], [])
+    assert parse("Handcrafted Heirloom").kind == "unknown"
+    assert parse("Stagecraft Trinket").kind == "unknown"
+
+
+def test_every_real_icy_veins_source_string_classifies_exactly_as_before():
+    """Regression: every real source string already used elsewhere in this
+    suite (pulled from actual Icy Veins pages across this project's
+    history, not invented for this test) must classify identically after
+    the bare-craft fallback was added -- it only fires when nothing else
+    already matched, so nothing already classifiable can be touched by it."""
+    parse = make_source_parser(
+        ["Kings' Rest", "The Blinding Vale", "Altar of Fangs", "King's Rest"],
+        ["Venomous Abyss", "Vashnik the Malignant", "The Coiled Altar",
+         "The Lost Explorers"],
+    )
+    real_strings = {
+        "Crafted by Blacksmithing": "craft",
+        "Crafted by Jewelcrafting": "craft",
+        "Crafted by Blacksmithing, drops in Kings' Rest": "craft",
+        "King's Rest": "dungeon",
+        "King's Rest with Catalyst": "dungeon",
+        "Blinding Vale": "dungeon",
+        "The Blinding Vale": "dungeon",
+        "Catalyst from King's Rest": "dungeon",
+        "Ula'tek in Venomous Abyss": "raid",
+    }
+    for source, expected_kind in real_strings.items():
+        assert parse(source).kind == expected_kind, source
+
+
 def test_dungeon_matching_survives_apostrophes_and_articles():
     # The season pool records "Kings' Rest" and the guide writes "King's Rest".
     # They are one dungeon. The pool's spelling is what comes back, because the
