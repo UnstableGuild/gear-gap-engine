@@ -118,7 +118,9 @@ REASONS: Mapping[str, str] = {
     "unverifiable": "converted slot with no cached stats for the guide pick",
 }
 
-SourceKind = Literal["dungeon", "raid", "craft", "catalyst", "vault", "unknown"]
+SourceKind = Literal[
+    "dungeon", "raid", "craft", "catalyst", "vault", "tier", "world", "unknown"
+]
 
 # A source the guide names that is neither a place nor a profession.
 #
@@ -131,6 +133,26 @@ SourceKind = Literal["dungeon", "raid", "craft", "catalyst", "vault", "unknown"]
 GREAT_VAULT = "The Great Vault"
 CATALYST = "Catalyst"
 
+# Two more of the same shape, added for Wowhead's own guide text (John,
+# 2026-09-17): a source that names no place at all is still a real answer,
+# not a defect. "Tier Set" alone (no encounter -- Catalyst conversion rows
+# where the guide simply doesn't say which boss) and a plain world/BoE drop
+# ("BoE Trash Drop" and similar wording) are both REPORTED AND NEVER ROUTED,
+# same reasoning as Catalyst/Vault above -- a tier piece obtained this way
+# is still a real BiS pick, and excluding a whole spec over this one label
+# is not acceptable (13 specs, confirmed live, were being dropped for
+# exactly this before these two kinds existed).
+#
+# EXTENSIBLE BY DESIGN, NOT BY POLICY: adding "delve" or another kind later
+# is meant to be a small, contained addition right here -- one constant, one
+# regex, one line in `parse()`. That does NOT exempt it from the version
+# rule below: ANY new recognized kind changes what "unknown" used to mean
+# for callers already filtering on it, so it is a MAJOR bump every time,
+# same as this one. The rule is about ordinary care making that bump
+# smaller to write, never about avoiding it.
+TIER_SET = "Tier set"
+WORLD_DROP = "World drop"
+
 # The shortest source name that may be matched by containment. Guards the
 # two-way test below from firing on a fragment.
 _MIN_MATCH = 6
@@ -142,6 +164,17 @@ _MIN_MATCH = 6
 # existed to disagree. Whole-word, case-insensitive: "Crafted" and "crafting"
 # both count, "Handcrafted" and "Stagecraft" do not.
 _BARE_CRAFT = re.compile(r"\bcraft(?:ed|ing)\b", re.IGNORECASE)
+
+# "Tier Set" alone (Wowhead's own Catalyst rows where no encounter is
+# named -- confirmed live 2026-09-17 on 10 real specs). Whole-phrase,
+# case-insensitive.
+_TIER_SET = re.compile(r"\btier set\b", re.IGNORECASE)
+
+# A plain world/BoE drop, no dungeon or raid attached. "BoE Trash Drop"
+# (Wowhead, arms-warrior) is the confirmed real string; "world drop" /
+# "world-drop" covers the same idea stated the other way round, since
+# nothing guarantees every guide phrases it identically.
+_WORLD_DROP = re.compile(r"\bboe\b|\bworld[\s-]?drop\b", re.IGNORECASE)
 
 # Anything assess() can return. A paired slot is one row about two slots.
 
@@ -596,9 +629,11 @@ def make_source_parser(
 
     The distinction is not cosmetic. Only a dungeon can be routed, because only a
     dungeon can be queued repeatedly. A craft is a one-time action, a raid is a
-    weekly lockout, the Great Vault is a weekly reward, and a bare Catalyst is a
-    conversion with no stated location -- none of those is a farm target, and all
-    of them are reported rather than hidden.
+    weekly lockout, the Great Vault is a weekly reward, a bare Catalyst is a
+    conversion with no stated location, a bare "Tier Set" is the same conversion
+    with no encounter named either, and a world/BoE drop names no repeatable
+    source at all -- none of those is a farm target, and all of them are
+    reported rather than hidden.
 
     The dungeon and raid lists are season data and are injected, so this stays
     true for any season.
@@ -607,10 +642,15 @@ def make_source_parser(
     Blacksmithing" contains no location, but a line can name both a profession
     and a place, and the profession is what decides how the row is acted on.
     Raids come before dungeons for the same reason: a raid line names a boss and
-    a zone, and the zone is the part that classifies it. Catalyst is checked
-    LAST of all, because "Catalyst from King's Rest" is a dungeon row that
-    happens to need converting -- only a Catalyst line naming nowhere is a
-    catalyst source.
+    a zone, and the zone is the part that classifies it. Tier Set and world/BoE
+    are checked after raid/dungeon/vault and before the bare-Catalyst fallback --
+    a source naming a real place always wins over a generic label sitting next
+    to it (`_resolve_unsourced`'s own multi-link handling already prefers a
+    named encounter when Wowhead's markup has both), so only a source with
+    NOTHING more specific falls to either. Catalyst is checked LAST of all,
+    because "Catalyst from King's Rest" is a dungeon row that happens to need
+    converting -- only a Catalyst line naming nowhere at all, and not even a
+    bare "Tier Set" or world drop, is a catalyst source.
     """
     dungeon_keys = [(name, _match_key(name)) for name in dungeons]
     raid_keys = [(name, _match_key(name)) for name in raids]
@@ -671,6 +711,14 @@ def make_source_parser(
 
         if vault_key and vault_key in key:
             return SourceRef("vault", GREAT_VAULT, catalyst)
+        if _TIER_SET.search(raw):
+            # Checked before the bare-Catalyst fallback below: a "Tier Set"
+            # row is USUALLY also a Catalyst conversion (original-item set),
+            # but the text itself does not have to say "catalyst" -- Wowhead's
+            # own wording never does -- so this must not depend on that flag.
+            return SourceRef("tier", TIER_SET, catalyst)
+        if _WORLD_DROP.search(raw):
+            return SourceRef("world", WORLD_DROP, catalyst)
         if catalyst:
             # Names the Catalyst and nowhere else: a conversion whose base the
             # guide does not locate.

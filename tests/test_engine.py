@@ -347,9 +347,58 @@ def test_every_real_icy_veins_source_string_classifies_exactly_as_before():
         "The Blinding Vale": "dungeon",
         "Catalyst from King's Rest": "dungeon",
         "Ula'tek in Venomous Abyss": "raid",
+        # Real Wowhead strings (2026-09-17): confirms adding tier/world did
+        # not touch anything that already classified.
+        "The Coiled Altar": "raid",
+        "Crafting": "craft",
+        "Crafting/Misc": "craft",
     }
     for source, expected_kind in real_strings.items():
         assert parse(source).kind == expected_kind, source
+
+
+def test_a_bare_tier_set_classifies_as_tier_with_no_encounter():
+    """Real Wowhead text (2026-09-17, augmentation-evoker and 9 other
+    specs): a Catalyst row where the guide simply never names an
+    encounter. Excluding the whole spec over this one label is not
+    acceptable -- it must classify, not fall through to unknown."""
+    parse = make_source_parser(["Kings' Rest"], ["Venomous Abyss"])
+    ref = parse("Tier Set")
+    assert ref.kind == "tier"
+    assert ref.name == "Tier set"
+
+
+def test_tier_set_is_case_insensitive_and_a_whole_phrase():
+    parse = make_source_parser([], [])
+    assert parse("TIER SET").kind == "tier"
+    assert parse("tier set").kind == "tier"
+    assert parse("Mastier Settings").kind == "unknown"  # not the phrase
+
+
+def test_a_real_place_beats_tier_set_sitting_next_to_it():
+    """Wowhead's own multi-link source cells put the generic "Tier Set"
+    label first and the real encounter second -- `wowhead_bis` already
+    strips to the last link before this ever reaches the engine, but the
+    classifier itself must independently prefer a named place too, since
+    nothing guarantees every provider strips it the same way."""
+    parse = make_source_parser(["Kings' Rest"], ["Venomous Abyss"])
+    assert parse("Tier Set - Nek'zali the Soulcoiler in Venomous Abyss").kind == "raid"
+
+
+def test_a_world_or_boe_drop_classifies_with_no_place_named():
+    """Real Wowhead text (2026-09-17, arms-warrior): "BoE Trash Drop"."""
+    parse = make_source_parser([], [])
+    ref = parse("BoE Trash Drop")
+    assert ref.kind == "world"
+    assert ref.name == "World drop"
+    assert parse("World Drop").kind == "world"
+    assert parse("world-drop").kind == "world"
+
+
+def test_neither_tier_nor_world_is_mistaken_for_the_other() -> None:
+    parse = make_source_parser([], [])
+    assert parse("Tier Set").kind == "tier"
+    assert parse("BoE Trash Drop").kind == "world"
 
 
 def test_dungeon_matching_survives_apostrophes_and_articles():
