@@ -153,6 +153,15 @@ CATALYST = "Catalyst"
 TIER_SET = "Tier set"
 WORLD_DROP = "World drop"
 
+# A world/BoE drop the guide's OWN text also calls a trash drop gets the more
+# specific of the two labels -- both are still `kind == "world"` (same
+# routing: reported, never routed, never excludes a spec), this only picks
+# which of the two names is shown. John, 2026-09-17: "BoE" describes how an
+# item binds, not where it comes from, and must never be the word that
+# reaches the page -- neither label ever uses it, whichever guide wording
+# triggered the match.
+TRASH_DROP = "Trash drop"
+
 # The shortest source name that may be matched by containment. Guards the
 # two-way test below from firing on a fragment.
 _MIN_MATCH = 6
@@ -175,6 +184,10 @@ _TIER_SET = re.compile(r"\btier set\b", re.IGNORECASE)
 # "world-drop" covers the same idea stated the other way round, since
 # nothing guarantees every guide phrases it identically.
 _WORLD_DROP = re.compile(r"\bboe\b|\bworld[\s-]?drop\b", re.IGNORECASE)
+
+# Which of the two labels a world-drop match gets. Checked only once
+# `_WORLD_DROP` has already matched, so this never fires on its own.
+_TRASH_WORDED = re.compile(r"\btrash\b", re.IGNORECASE)
 
 # Anything assess() can return. A paired slot is one row about two slots.
 
@@ -718,7 +731,10 @@ def make_source_parser(
             # own wording never does -- so this must not depend on that flag.
             return SourceRef("tier", TIER_SET, catalyst)
         if _WORLD_DROP.search(raw):
-            return SourceRef("world", WORLD_DROP, catalyst)
+            # Same kind either way -- only the label differs, and neither
+            # one is ever the raw guide text or the word "BoE" itself.
+            name = TRASH_DROP if _TRASH_WORDED.search(raw) else WORLD_DROP
+            return SourceRef("world", name, catalyst)
         if catalyst:
             # Names the Catalyst and nowhere else: a conversion whose base the
             # guide does not locate.

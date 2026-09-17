@@ -386,11 +386,14 @@ def test_a_real_place_beats_tier_set_sitting_next_to_it():
 
 
 def test_a_world_or_boe_drop_classifies_with_no_place_named():
-    """Real Wowhead text (2026-09-17, arms-warrior): "BoE Trash Drop"."""
+    """Real Wowhead text (2026-09-17, arms-warrior): "BoE Trash Drop" --
+    the word "trash" in the guide's own text is what earns the more
+    specific "Trash drop" label; see the dedicated label tests below for
+    the full trash/world split. "BoE" alone must never be the label."""
     parse = make_source_parser([], [])
     ref = parse("BoE Trash Drop")
     assert ref.kind == "world"
-    assert ref.name == "World drop"
+    assert ref.name == "Trash drop"
     assert parse("World Drop").kind == "world"
     assert parse("world-drop").kind == "world"
 
@@ -399,6 +402,31 @@ def test_neither_tier_nor_world_is_mistaken_for_the_other() -> None:
     parse = make_source_parser([], [])
     assert parse("Tier Set").kind == "tier"
     assert parse("BoE Trash Drop").kind == "world"
+
+
+def test_a_trash_worded_world_drop_gets_the_more_specific_label():
+    """John, 2026-09-17: "BoE" describes how an item binds, not where it
+    comes from, and must never be the label a reader sees -- when the
+    guide's own text also says "trash", that is the more specific, honest
+    answer of the two, so it wins over the generic one. "BoE Trash Drop"
+    is the confirmed real Wowhead string (arms-warrior); "World Drop -
+    Trash" is synthetic, proving the split keys on the word "trash" alone,
+    not specifically on "boe"."""
+    parse = make_source_parser([], [])
+    assert parse("BoE Trash Drop").name == "Trash drop"
+    assert parse("World Drop - Trash").name == "Trash drop"
+
+
+def test_a_world_drop_with_no_trash_wording_keeps_the_generic_label():
+    parse = make_source_parser([], [])
+    assert parse("World Drop").name == "World drop"
+    assert parse("BoE").name == "World drop"
+
+
+def test_the_word_boe_never_appears_in_either_labels_own_text():
+    parse = make_source_parser([], [])
+    for text in ("BoE", "BoE Trash Drop", "World Drop", "world-drop"):
+        assert "boe" not in (parse(text).name or "").lower()
 
 
 def test_dungeon_matching_survives_apostrophes_and_articles():
