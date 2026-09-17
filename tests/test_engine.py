@@ -370,6 +370,16 @@ def test_the_catalyst_flag_reads_the_source_text():
     assert not parse("King's Rest").catalyst
 
 
+def test_the_catalyst_flag_also_reads_method_ggs_own_verb_form():
+    """Method.gg writes "Catalyzed" (verb), Icy Veins writes "Catalyst"
+    (noun) -- verified live 2026-09-17, "Ula'tek (Catalyzed)". A bare
+    "catalyst" substring check silently missed every one of these."""
+    parse = make_source_parser(["Kings' Rest"], [])
+    ref = parse("King's Rest (Catalyzed)")
+    assert ref.catalyst
+    assert ref.kind == "dungeon"  # the flag is additive, not a new kind
+
+
 def test_a_raid_classifies_before_a_dungeon():
     parse = make_source_parser(["Kings' Rest"], ["Venomous Abyss"])
     assert parse("Ula'tek in Venomous Abyss").kind == "raid"

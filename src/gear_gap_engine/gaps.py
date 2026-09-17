@@ -644,7 +644,13 @@ def make_source_parser(
 
     def parse(text: str | None) -> SourceRef:
         raw = text or ""
-        catalyst = "catalyst" in raw.lower()
+        low = raw.lower()
+        # "Catalyst" and "Catalyzed" both count -- Method.gg writes the verb
+        # form ("Ula'tek (Catalyzed)") where Icy Veins writes the noun
+        # ("Catalyst from King's Rest"). A bare substring check on "catalyst"
+        # silently missed every Method.gg row that said "Catalyzed" instead,
+        # verified live 2026-09-17 against 34 real built specs.
+        catalyst = "catalyst" in low or "catalyzed" in low
         for profession in PROFESSIONS:
             if profession in raw:
                 return SourceRef("craft", profession, catalyst)
