@@ -551,10 +551,15 @@ def identify(
     now -- identify() itself no longer conflates it with either match or
     mismatch.
 
-    "unknown" stays in the return type for API stability; nothing in this
-    function can produce it any more (there is no reference-data lookup
-    left to fail), so a caller that still branches on it just never takes
-    that branch.
+    NOTHING EMITS "unknown" ANY MORE. It stays in the return type for API
+    stability only -- there is no reference-data lookup left in this
+    function to fail, so there is no case left that produces it. A caller
+    branching on it (assess()'s own `elif found == "unknown"`, kept for
+    the same reason) is dead code by construction, not a case to go hunt
+    for or try to reach with a fixture; do not spend time looking for
+    input that makes this return "unknown", because none exists. Filed as
+    a CANDIDATES row (gear-gap-web/wow-gear) for whether to narrow the
+    type and remove the dead branch outright, rather than fixed here.
     """
     if current is None:
         return "no"
