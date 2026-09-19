@@ -109,14 +109,18 @@ def test_the_right_base_at_the_ceiling_is_not_a_target():
 
 def test_a_slot_above_what_the_dungeon_drops_is_never_a_target():
     # Myth 334 legs against a 311 dungeon drop. Re-converting would cost 23 item
-    # levels, so this must not appear however the secondaries compare.
+    # levels, so this must never be a TARGET however the secondaries compare --
+    # revised 2026-09-19: it is still a real, visible gap (`reasons` is
+    # populated, see test_identity_is_tested_above_the_ceiling_too), just
+    # never one `route()`/`crafts()`/`unrouted_gaps` can offer.
     rows = gaps_for(
         {"legs": item("legs", "Baleful Grave-Knight's Greaves", 334,
                       {"CRIT_RATING": 59, "MASTERY_RATING": 142},
                       tier=True, item_id=271473)},
         BIS_LEGS,
     )
-    assert reasons(rows, "legs") is None
+    assert reasons(rows, "legs") == ["wrong_base"]
+    assert targets_of(rows) == []
 
 
 def test_below_the_ceiling_is_a_target_on_item_level_alone():
@@ -821,8 +825,12 @@ def test_a_worn_guide_ring_is_not_reported_as_a_gap():
 
 
 def test_identity_is_tested_above_the_ceiling_too():
-    # It costs one pure comparison and buys the page the difference between
-    # "holds the guide's pick" and "holds something else nobody can farm".
+    # Revised 2026-09-19: identity ALWAYS becomes a reason now, reachable or
+    # not -- the page must be able to tell "holds the guide's pick" apart
+    # from "holds something else nobody can farm", but that no longer means
+    # withholding the verdict itself above the ceiling. This item is a
+    # converted set piece in a Catalyst slot, so a mismatch reads "wrong
+    # base", not "wrong item".
     rows = assess(
         {"legs": item("legs", "Baleful Grave-Knight's Greaves", 334,
                       {"CRIT_RATING": 59, "MASTERY_RATING": 142},
@@ -831,7 +839,7 @@ def test_identity_is_tested_above_the_ceiling_too():
     )
     assert rows[0].reachable is False
     assert rows[0].identity == "no"
-    assert rows[0].reasons == ()
+    assert rows[0].reasons == ("wrong_base",)
 
 
 def test_a_slot_above_the_ceiling_holding_the_guides_pick_reports_yes():
@@ -843,14 +851,18 @@ def test_a_slot_above_the_ceiling_holding_the_guides_pick_reports_yes():
     assert (rows[0].identity, rows[0].reachable, rows[0].reasons) == ("yes", False, ())
 
 
-def test_an_unreachable_verdict_never_becomes_a_reason():
-    # THE REGRESSION GUARD. Reachability still decides whether a slot is a
-    # target, so testing identity everywhere cannot change the gap list or the
-    # route. Only what the page can say changes.
+def test_an_unreachable_verdict_becomes_a_reason_but_never_a_route_target():
+    # THE REGRESSION GUARD, revised 2026-09-19 (Maruxus): an unreachable
+    # wrong item IS a real gap now -- reasons is no longer empty, and
+    # is_gap is True -- but reachability still decides whether it is a
+    # TARGET, so it can never reach the route. Before this fix, `gaps` here
+    # was `[]`: the row was invisible, not merely unrouted, which is the
+    # defect Maruxus's real report surfaced.
     equipped = {"legs": item("legs", "Something Else", 334,
                              {"CRIT_RATING": 1, "HASTE_RATING": 99}, item_id=1)}
     gaps = find_gaps(equipped, BIS_LEGS, STATS, CHEST_ILVL, parse_source)
-    assert gaps == []
+    assert [g.reasons for g in gaps] == [("wrong_item",)]
+    assert targets_of(gaps) == []
     assert route(gaps) == {}
     # And route() will not be talked into it by the full assessment either.
     assert route(assess(equipped, BIS_LEGS, STATS, CHEST_ILVL, parse_source)) == {}
@@ -863,6 +875,26 @@ def test_a_reachable_slot_still_turns_its_verdict_into_a_reason():
     assert rows[0].identity == "no"
     assert rows[0].reachable is True
     assert list(rows[0].reasons) == ["below_chest_ilvl", "wrong_item"]
+
+
+def test_an_unverifiable_verdict_also_survives_above_the_ceiling():
+    """Same principle as test_identity_is_tested_above_the_ceiling_too, for
+    the other uncertain answer identify() can give: "unknown" becomes
+    "unverifiable" regardless of reachability too, not only "no". Before
+    this fix an uncached item above the ceiling reported nothing at all,
+    same defect as the "no" case."""
+    spec = SpecReference(
+        mythic_bis=[BisEntry("Chest", 111111, "Uncached Chest", "Temple of Sethraliss")]
+    )
+    rows = assess(
+        {"chest": item("chest", "Some Tier Chest", 334,
+                       {"CRIT_RATING": 72, "MASTERY_RATING": 111}, tier=True, item_id=999)},
+        spec, STATS, CHEST_ILVL, parse_source,
+    )
+    assert rows[0].reachable is False
+    assert rows[0].identity == "unknown"
+    assert rows[0].reasons == ("unverifiable",)
+    assert targets_of(rows) == []
 
 
 def test_an_empty_slot_reports_no_identity_and_is_reachable():

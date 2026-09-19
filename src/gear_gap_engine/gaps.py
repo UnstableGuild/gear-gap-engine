@@ -401,12 +401,16 @@ class GapRow:
 
     slot is None for a paired slot.
 
-    identity and reachable are separate on purpose (ADR 005). identity is whether
-    this is the item the guide names, tested for every slot. reachable is whether
-    a key's chest could improve the slot at all. Only reachable slots contribute
-    an identity finding to reasons, so the gap list and the route are decided by
-    reachability exactly as before -- but the page can now tell a slot that holds
-    the guide's pick apart from one that merely sits above anything farmable.
+    identity and reachable are separate on purpose (ADR 005, revised
+    2026-09-19). identity is whether this is the item the guide names,
+    tested for every slot, and ALWAYS contributes its finding to `reasons`
+    -- whether your gear is right and whether a key can get you there are
+    different questions, and this row states the first unconditionally.
+    reachable is whether a key's chest could improve the slot at all; it no
+    longer gates `reasons`, but it still gates `targets` (see that
+    property's own docstring) -- so `is_gap`/the gap list reflect a real
+    verdict on every slot, while the route only ever offers a slot someone
+    can actually go and farm.
     """
 
     slot: str | None
@@ -435,8 +439,15 @@ class GapRow:
 
     @property
     def targets(self) -> tuple[Target, ...]:
-        """A single slot is at most one target, and only when it is a gap."""
-        if not self.is_gap:
+        """A single slot is at most one target, and only when it is a gap
+        THAT CAN BE ROUTED TO -- `is_gap` alone is not enough, since it is
+        now true for a slot whose gear already outlevels this key (see the
+        class docstring). Farming cannot beat that slot regardless of what
+        is wrong with it, so it is a real gap for the page to name but never
+        a target for `route()`/`crafts()`/`unrouted_gaps` to offer. A craft
+        target is unaffected: `assess()` gives it `reachable=True`
+        unconditionally, since a craft never comes out of a key."""
+        if not self.is_gap or not self.reachable:
             return ()
         return (
             Target(
@@ -832,26 +843,33 @@ def assess(
         if chest_ilvl is not None and current.ilvl < chest_ilvl:
             reasons.append("below_chest_ilvl")
 
-        # ADR 005: identity is tested for EVERY slot, reachable or not. It costs
-        # one pure comparison and cannot change the gap list, because only a
-        # reachable slot turns a verdict into a reason. What it buys is that the
-        # page can say "holds the guide's pick" rather than "not checked" about a
-        # slot nobody could farm anyway -- for a well-geared character that is
-        # most of the page, and the by-slot view exists to say how they stand.
+        # ADR 005 (revised 2026-09-19): identity is tested for EVERY slot,
+        # reachable or not, and now ALWAYS becomes a reason when it fails --
+        # whether you can be ROUTED to fix a slot and whether your gear IS
+        # the guide's pick are different questions, and gating the second on
+        # the first meant the tool went silent about a real gap exactly when
+        # a reader's own gear had already outgrown their current key. Found
+        # live 2026-09-19 (Maruxus: real gear ahead of a +10 key, a wrong
+        # Helm/Neck and mis-rolled Catalyst Hands/Legs all reporting nothing
+        # at all -- `reasons == ()` reads identically to "already right" and
+        # "cannot tell you" to anything reading this row, which is exactly
+        # the lie the spec forbids). `GapRow.targets` is what still gates on
+        # `reachable` -- routing someone to farm a slot their gear already
+        # outlevels would be a wrong instruction, not a corrected one; see
+        # its own docstring.
         found = identify(current, entry.wanted_id, current.slot, item_stats)
 
-        if reachable:
-            if found == "no":
-                # A WRONG ITEM IS A GAP EVEN AT THE CEILING. A converted piece's
-                # secondaries are permanent, so a slot sitting exactly at the
-                # chest item level can still be the wrong item and still needs
-                # farming. Item level and identity are separate reasons, never
-                # one gate: an earlier version short-circuited on item level here
-                # and silently dropped those slots off the route.
-                converted = current.slot in CATALYST_SLOTS and current.is_set_piece
-                reasons.append("wrong_base" if converted else "wrong_item")
-            elif found == "unknown":
-                reasons.append("unverifiable")
+        if found == "no":
+            # A WRONG ITEM IS A GAP EVEN AT THE CEILING. A converted piece's
+            # secondaries are permanent, so a slot sitting exactly at the
+            # chest item level can still be the wrong item and still needs
+            # farming. Item level and identity are separate reasons, never
+            # one gate: an earlier version short-circuited on item level here
+            # and silently dropped those slots off the route.
+            converted = current.slot in CATALYST_SLOTS and current.is_set_piece
+            reasons.append("wrong_base" if converted else "wrong_item")
+        elif found == "unknown":
+            reasons.append("unverifiable")
 
         rows.append(
             _row(entry, slot, tuple(reasons), source, current, item_stats,
