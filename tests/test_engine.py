@@ -59,6 +59,21 @@ BIS_LEGS = SpecReference(
         BisEntry("Legs", 273776, "Ancient General's Obsidian Pillars", "Altar of Fangs")
     ]
 )
+# A REAL Catalyst entry -- catalyst_input actually set, unlike the four
+# fixtures below this used to reuse for the same purpose (John, 2026-09-19:
+# they modeled a conversion without ever setting catalyst_input, so they
+# only ever exercised the fingerprint branch identify() no longer has).
+# TIER_CHEST_ID is the FINAL, converted item (`entry.item_id`) -- what
+# Blizzard reports as the equipped id once GUIDE_CHEST_ID has actually been
+# Catalysed. GUIDE_CHEST_ID doubles as the base (`catalyst_input`); its own
+# STATS entry is now purely the Want cell's displayed roll, never an
+# identity comparison.
+BIS_CHEST_CATALYST = SpecReference(
+    mythic_bis=[
+        BisEntry("Chest", TIER_CHEST_ID, "Baleful Grave-Knight's Breastplate",
+                 "Temple of Sethraliss", catalyst_input=GUIDE_CHEST_ID)
+    ]
+)
 
 parse_source = make_source_parser(
     ["Altar of Fangs", "Temple of Sethraliss", "Kings' Rest", "The Blinding Vale"],
@@ -97,12 +112,19 @@ def test_a_wrong_base_at_the_ceiling_is_still_a_target():
     assert reasons(rows, "chest") == ["wrong_base"]
 
 
-def test_the_right_base_at_the_ceiling_is_not_a_target():
+def test_the_converted_target_at_the_ceiling_is_not_a_target():
+    """Revised 2026-09-19 (John, from Maruxus's real report): identity is
+    the item id, never the roll -- wearing the guide's own FINAL item is a
+    match regardless of which valid base produced it, so this uses a roll
+    that does NOT match the base's own reference secondaries on purpose.
+    The old version of this test only passed through a stat-fingerprint
+    match against a base id it never actually wired up as catalyst_input;
+    see BIS_CHEST_CATALYST's own comment."""
     rows = gaps_for(
         {"chest": item("chest", "Baleful Grave-Knight's Breastplate", 311,
-                       {"CRIT_RATING": 72, "MASTERY_RATING": 111},
+                       {"HASTE_RATING": 68, "VERSATILITY": 114},
                        tier=True, item_id=TIER_CHEST_ID)},
-        BIS_CHEST,
+        BIS_CHEST_CATALYST,
     )
     assert reasons(rows, "chest") is None
 
@@ -124,11 +146,14 @@ def test_a_slot_above_what_the_dungeon_drops_is_never_a_target():
 
 
 def test_below_the_ceiling_is_a_target_on_item_level_alone():
+    """Revised 2026-09-19 -- see test_the_converted_target_at_the_ceiling_
+    is_not_a_target: the roll here does not match the base's own reference
+    secondaries on purpose, to prove identity no longer cares."""
     rows = gaps_for(
         {"chest": item("chest", "Baleful Grave-Knight's Breastplate", 298,
-                       {"CRIT_RATING": 72, "MASTERY_RATING": 111},
+                       {"HASTE_RATING": 68, "VERSATILITY": 114},
                        tier=True, item_id=TIER_CHEST_ID)},
-        BIS_CHEST,
+        BIS_CHEST_CATALYST,
     )
     assert reasons(rows, "chest") == ["below_chest_ilvl"]
 
@@ -157,45 +182,41 @@ def test_an_empty_slot_is_a_gap():
     assert reasons(rows, "chest") == ["empty"]
 
 
-# ------------------------------------------------------------ unverifiable
-
-
-def test_an_uncached_reference_item_reports_unverifiable_not_a_false_pass():
-    # unverifiable is a real answer. It means the reference data does not cover
-    # the item, not that the slot is fine, and it must never collapse into a pass.
-    spec = SpecReference(
-        mythic_bis=[BisEntry("Chest", 111111, "Uncached Chest", "Temple of Sethraliss")]
-    )
+def test_holding_the_unconverted_base_needs_catalyst_not_wrong():
+    """John, 2026-09-19: holding the exact base, un-Catalysed, is its own
+    verdict -- the reader owns the right input and has one action left
+    (Catalyse it), which is not the same claim as "wrong item"/"wrong
+    base". This is also the fix for a separate, previously-known bug:
+    identify()'s old first branch (`current.item_id == wanted_id`, where
+    wanted_id was the base on a Catalyst row) said "yes" for exactly this
+    case -- a false match for someone who had NOT actually converted yet
+    (see gear-gap-web's `_worn_is_ceiling`, which carried its own
+    workaround for this before the fix moved into identify() itself)."""
     rows = gaps_for(
-        {"chest": item("chest", "Some Tier Chest", 311,
-                       {"CRIT_RATING": 72, "MASTERY_RATING": 111}, tier=True, item_id=999)},
-        spec,
+        {"chest": item("chest", "Desert Guardian's Breastplate", 311,
+                       {"CRIT_RATING": 72, "MASTERY_RATING": 111},
+                       tier=False, item_id=GUIDE_CHEST_ID)},
+        BIS_CHEST_CATALYST,
     )
-    assert reasons(rows, "chest") == ["unverifiable"]
+    assert reasons(rows, "chest") == ["needs_catalyst"]
 
 
-def test_an_item_with_no_secondaries_is_unverifiable_not_a_pass():
-    # 14 of the 82 cached items carry an effect instead of a stat line. A blank
-    # split reads as unknown, never as a match.
-    stats = ItemStats(items={"555": {"name": "Effect Trinket", "secondaries": {}}})
-    spec = SpecReference(mythic_bis=[BisEntry("Chest", 555, "Effect Chest", "Kings' Rest")])
-    rows = gaps_for(
-        {"chest": item("chest", "Tier Chest", 311, {"CRIT_RATING": 10}, tier=True, item_id=9)},
-        spec, stats,
-    )
-    assert reasons(rows, "chest") == ["unverifiable"]
+# ------------------------------------------------------------- item identity
 
 
-# ------------------------------------------------------------- the fingerprint
-
-
-def test_the_fingerprint_is_item_level_invariant():
-    # The same base carried to 334 by crests still reads as the right item.
+def test_a_higher_item_level_of_the_converted_item_is_still_a_match():
+    """Revised 2026-09-19, replacing a test that exercised identify()'s old
+    stat-fingerprint branch (`test_the_fingerprint_is_item_level_invariant`
+    -- fingerprint() itself is unaffected and still tested on its own
+    below; this is about identity, which no longer looks at secondaries at
+    all). The roll here does not match the base's reference secondaries,
+    on purpose: a higher item level of the guide's own final item is still
+    that item, whatever it rolled."""
     rows = gaps_for(
         {"chest": item("chest", "Baleful Grave-Knight's Breastplate", 334,
-                       {"CRIT_RATING": 77, "MASTERY_RATING": 119},
+                       {"HASTE_RATING": 77, "VERSATILITY": 119},
                        tier=True, item_id=TIER_CHEST_ID)},
-        BIS_CHEST,
+        BIS_CHEST_CATALYST,
     )
     assert reasons(rows, "chest") is None
 
@@ -203,18 +224,20 @@ def test_the_fingerprint_is_item_level_invariant():
 def test_the_fingerprint_is_scale_invariant():
     # Slice 1 found the API reports much smaller secondary magnitudes than a
     # tooltip does. Each side is normalised against its own total, so only the
-    # ratio is ever compared. This test fails the moment anyone compares raw
+    # ratio is ever compared. This fails the moment anyone compares raw
     # magnitudes instead.
+    #
+    # `fingerprint()` itself is UNAFFECTED by identify()'s 2026-09-19 rewrite
+    # (it no longer feeds identity at all) -- it stays a real, exported
+    # function, still used at build time by gear-gap-reference's own
+    # collision check (`_check_fingerprints`, "two items in the same
+    # Catalyst slot share a secondary fingerprint"). Trimmed to the pure
+    # property alone; the `gaps_for()` half this test used to also check
+    # tested identify()'s old stat-matching branch, which no longer exists
+    # (see test_a_higher_item_level_of_the_converted_item_is_still_a_match).
     tooltip = {"CRIT_RATING": 720, "MASTERY_RATING": 1110}
     api = {"CRIT_RATING": 72, "MASTERY_RATING": 111}
     assert fingerprint(tooltip) == fingerprint(api)
-
-    stats = ItemStats(items={str(GUIDE_CHEST_ID): {"name": "x", "secondaries": tooltip}})
-    rows = gaps_for(
-        {"chest": item("chest", "Tier Chest", 311, api, tier=True, item_id=TIER_CHEST_ID)},
-        BIS_CHEST, stats,
-    )
-    assert reasons(rows, "chest") is None
 
 
 def test_an_empty_or_zero_split_has_no_fingerprint():
@@ -876,25 +899,6 @@ def test_a_reachable_slot_still_turns_its_verdict_into_a_reason():
     assert rows[0].reachable is True
     assert list(rows[0].reasons) == ["below_chest_ilvl", "wrong_item"]
 
-
-def test_an_unverifiable_verdict_also_survives_above_the_ceiling():
-    """Same principle as test_identity_is_tested_above_the_ceiling_too, for
-    the other uncertain answer identify() can give: "unknown" becomes
-    "unverifiable" regardless of reachability too, not only "no". Before
-    this fix an uncached item above the ceiling reported nothing at all,
-    same defect as the "no" case."""
-    spec = SpecReference(
-        mythic_bis=[BisEntry("Chest", 111111, "Uncached Chest", "Temple of Sethraliss")]
-    )
-    rows = assess(
-        {"chest": item("chest", "Some Tier Chest", 334,
-                       {"CRIT_RATING": 72, "MASTERY_RATING": 111}, tier=True, item_id=999)},
-        spec, STATS, CHEST_ILVL, parse_source,
-    )
-    assert rows[0].reachable is False
-    assert rows[0].identity == "unknown"
-    assert rows[0].reasons == ("unverifiable",)
-    assert targets_of(rows) == []
 
 
 def test_an_empty_slot_reports_no_identity_and_is_reachable():

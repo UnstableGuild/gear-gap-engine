@@ -108,7 +108,10 @@ PROFESSIONS = (
     "Engineering",
 )
 
-Reason = Literal["empty", "below_chest_ilvl", "wrong_item", "wrong_base", "unverifiable"]
+Reason = Literal[
+    "empty", "below_chest_ilvl", "wrong_item", "wrong_base", "unverifiable",
+    "needs_catalyst",
+]
 
 REASONS: Mapping[str, str] = {
     "empty": "nothing equipped in this slot",
@@ -116,6 +119,10 @@ REASONS: Mapping[str, str] = {
     "wrong_item": "not the item the guide names for this slot",
     "wrong_base": "converted from the wrong base, so the stats are stuck",
     "unverifiable": "converted slot with no cached stats for the guide pick",
+    # Holding the exact Catalyst base, un-Catalysed -- own verdict, not
+    # "wrong" (John, 2026-09-19): the reader owns the right input and has
+    # one action left, not a farm run for a different item.
+    "needs_catalyst": "holds the exact base; needs Catalysing, not farming",
 }
 
 SourceKind = Literal[
@@ -514,37 +521,44 @@ def fingerprint(secondaries: Mapping[str, int] | None) -> tuple[tuple[str, float
 
 
 def identify(
-    current: EquippedItem | None,
-    wanted_id: int,
-    slot: str,
-    item_stats: ItemStats | None = None,
+    current: EquippedItem | None, entry: BisEntry,
 ) -> Literal["yes", "no", "unknown"]:
     """Is the equipped piece the item the guide names?
 
-    Two mechanisms, because the Catalyst destroys one of them.
+    ONE mechanism, always: item id. `entry.item_id` is the guide's own
+    final card -- for a Catalyst row, the CONVERTED tier item's id, which
+    is what Blizzard reports as the equipped item's id once the conversion
+    has actually happened (`CATALYST_SLOTS`'s own comment: "the equipped
+    item id becomes the tier item's id whatever went in"). A higher item
+    level of that same id is still that item; no roll comparison is
+    needed, or asked, to answer "is this the item".
 
-    By item id wherever the id survives, which covers every unconverted slot and
-    needs no reference data. By secondary fingerprint on a converted slot, where
-    the id was overwritten with the tier item's and the inherited secondaries are
-    the only surviving evidence of what went in.
+    Revised 2026-09-19 (John, from Maruxus's real report): the previous
+    version compared against `wanted_id` (`catalyst_input or item_id`) --
+    the BASE's id on a Catalyst row, never the card's own final item --
+    and fell back to a secondary-stat fingerprint match against the
+    base's reference roll whenever the bare id didn't match. That was
+    wrong twice over: it never even had `entry.item_id` to compare
+    against, so someone who had ALREADY converted to the guide's own
+    exact target still failed here whenever their particular conversion's
+    roll differed from the reference roll (a wrong "no" for a real
+    match) -- and its first branch, `current.item_id == wanted_id`,
+    quietly returned "yes" for someone who merely HOLDS the raw,
+    UN-Catalysed base (a wrong "yes" for what is really a still-open
+    step). Neither problem needed a stats lookup to avoid; they needed
+    the right id in the comparison. See `assess()`'s own `needs_catalyst`
+    reason for where "holds the base, not yet converted" actually lives
+    now -- identify() itself no longer conflates it with either match or
+    mismatch.
 
-    "unknown" is a real answer and must never collapse into "yes". It means the
-    reference data does not cover this item, not that the slot is fine.
+    "unknown" stays in the return type for API stability; nothing in this
+    function can produce it any more (there is no reference-data lookup
+    left to fail), so a caller that still branches on it just never takes
+    that branch.
     """
     if current is None:
         return "no"
-    if current.item_id == wanted_id:
-        return "yes"
-    if not (current.is_set_piece and slot in CATALYST_SLOTS):
-        return "no"
-    reference = item_stats.get(wanted_id) if item_stats else None
-    if not reference:
-        return "unknown"
-    here = fingerprint(current.secondaries)
-    there = fingerprint(reference.get("secondaries"))
-    if here is None or there is None:
-        return "unknown"
-    return "yes" if here == there else "no"
+    return "yes" if current.item_id == entry.item_id else "no"
 
 
 def roll_report(secondaries: Mapping[str, int] | None) -> str | None:
@@ -857,17 +871,25 @@ def assess(
         # `reachable` -- routing someone to farm a slot their gear already
         # outlevels would be a wrong instruction, not a corrected one; see
         # its own docstring.
-        found = identify(current, entry.wanted_id, current.slot, item_stats)
+        found = identify(current, entry)
 
         if found == "no":
-            # A WRONG ITEM IS A GAP EVEN AT THE CEILING. A converted piece's
-            # secondaries are permanent, so a slot sitting exactly at the
-            # chest item level can still be the wrong item and still needs
-            # farming. Item level and identity are separate reasons, never
-            # one gate: an earlier version short-circuited on item level here
-            # and silently dropped those slots off the route.
-            converted = current.slot in CATALYST_SLOTS and current.is_set_piece
-            reasons.append("wrong_base" if converted else "wrong_item")
+            # Holding the exact Catalyst base, un-Catalysed, is its own
+            # verdict -- not wrong, since the reader owns the right input,
+            # and not a match either, since the conversion is still an
+            # outstanding step (John, 2026-09-19: "that's the whole point
+            # of the row" -- tell them what to do, not that they're wrong).
+            if entry.catalyst_input is not None and current.item_id == entry.catalyst_input:
+                reasons.append("needs_catalyst")
+            else:
+                # A WRONG ITEM IS A GAP EVEN AT THE CEILING. A converted piece's
+                # secondaries are permanent, so a slot sitting exactly at the
+                # chest item level can still be the wrong item and still needs
+                # farming. Item level and identity are separate reasons, never
+                # one gate: an earlier version short-circuited on item level here
+                # and silently dropped those slots off the route.
+                converted = current.slot in CATALYST_SLOTS and current.is_set_piece
+                reasons.append("wrong_base" if converted else "wrong_item")
         elif found == "unknown":
             reasons.append("unverifiable")
 
@@ -926,7 +948,7 @@ def _pair_row(
             (
                 h for h in held
                 if h.slot not in claimed
-                and identify(h, entry.wanted_id, h.slot, item_stats) == "yes"
+                and identify(h, entry) == "yes"
             ),
             None,
         )
