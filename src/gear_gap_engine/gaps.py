@@ -109,8 +109,7 @@ PROFESSIONS = (
 )
 
 Reason = Literal[
-    "empty", "below_chest_ilvl", "wrong_item", "wrong_base", "unverifiable",
-    "needs_catalyst",
+    "empty", "below_chest_ilvl", "wrong_item", "wrong_base", "needs_catalyst",
 ]
 
 REASONS: Mapping[str, str] = {
@@ -118,7 +117,6 @@ REASONS: Mapping[str, str] = {
     "below_chest_ilvl": "under what a key end-of-run chest drops",
     "wrong_item": "not the item the guide names for this slot",
     "wrong_base": "converted from the wrong base, so the stats are stuck",
-    "unverifiable": "converted slot with no cached stats for the guide pick",
     # Holding the exact Catalyst base, un-Catalysed -- own verdict, not
     # "wrong" (John, 2026-09-19): the reader owns the right input and has
     # one action left, not a farm run for a different item.
@@ -423,7 +421,7 @@ class GapRow:
     slot: str | None
     bis_slot: str
     reasons: tuple[str, ...]
-    identity: Literal["yes", "no", "unknown"]
+    identity: Literal["yes", "no"]
     reachable: bool
     want: str
     want_id: int
@@ -522,7 +520,7 @@ def fingerprint(secondaries: Mapping[str, int] | None) -> tuple[tuple[str, float
 
 def identify(
     current: EquippedItem | None, entry: BisEntry,
-) -> Literal["yes", "no", "unknown"]:
+) -> Literal["yes", "no"]:
     """Is the equipped piece the item the guide names?
 
     ONE mechanism, always: item id. `entry.item_id` is the guide's own
@@ -551,15 +549,15 @@ def identify(
     now -- identify() itself no longer conflates it with either match or
     mismatch.
 
-    NOTHING EMITS "unknown" ANY MORE. It stays in the return type for API
-    stability only -- there is no reference-data lookup left in this
-    function to fail, so there is no case left that produces it. A caller
-    branching on it (assess()'s own `elif found == "unknown"`, kept for
-    the same reason) is dead code by construction, not a case to go hunt
-    for or try to reach with a fixture; do not spend time looking for
-    input that makes this return "unknown", because none exists. Filed as
-    a CANDIDATES row (gear-gap-web/wow-gear) for whether to narrow the
-    type and remove the dead branch outright, rather than fixed here.
+    RETURN TYPE NARROWED 2026-09-28 (was `Literal["yes", "no", "unknown"]`).
+    "unknown" was kept for one release for API stability after the
+    2026-09-19 revision above removed the only code path that could ever
+    produce it -- there is no reference-data lookup left in this function
+    to fail. Confirmed dead by construction, not by absence of a fixture
+    that reaches it: `assess()`'s own `elif found == "unknown"` and its
+    "unverifiable" reason, and gear-gap-web's `_tag()` branches for both,
+    were removed in the same change (see the CANDIDATES.md row this
+    closes -- gear-gap-web/wow-gear, filed 2026-09-19).
     """
     if current is None:
         return "no"
@@ -895,8 +893,6 @@ def assess(
                 # and silently dropped those slots off the route.
                 converted = current.slot in CATALYST_SLOTS and current.is_set_piece
                 reasons.append("wrong_base" if converted else "wrong_item")
-        elif found == "unknown":
-            reasons.append("unverifiable")
 
         rows.append(
             _row(entry, slot, tuple(reasons), source, current, item_stats,
@@ -991,7 +987,7 @@ def _row(
     current: EquippedItem | None,
     item_stats: ItemStats | None,
     *,
-    identity: Literal["yes", "no", "unknown"],
+    identity: Literal["yes", "no"],
     reachable: bool,
 ) -> GapRow:
     reference = item_stats.get(entry.wanted_id) if item_stats else None
@@ -1122,19 +1118,18 @@ def tracks_for(ilvl: int, tracks: Mapping[str, Sequence[int]]) -> list[dict[str,
 def coverage(spec_ref: SpecReference, item_stats: ItemStats | None) -> dict[str, Any]:
     """How much of a spec's Catalyst slots the reference data can verify.
 
-    A tool that reports "unverifiable" has to know how often it does. A spec
-    below full coverage is shipped as partially supported and says so, rather
-    than quietly returning unverifiable rows.
+    A tool that reports partial coverage has to know how often it does. A
+    spec below full coverage is shipped as partially supported and says so,
+    rather than quietly overstating what the reference data can verify.
     """
     items = item_stats.items if item_stats else {}
     needed = [
         e for e in spec_ref.mythic_bis
         if (key := slot_key(e.slot_label)) is not None and key in CATALYST_SLOTS
     ]
-    # A row with no secondaries is as unverifiable as no row at all: identify()
-    # returns "unknown" for an empty split exactly as it does for a missing
-    # entry. Counting it as covered overstated what the engine can verify, and
-    # this project's rule is that unverifiable never collapses into a pass.
+    # A row with no secondaries gives nothing to verify against, same as no
+    # cached row at all -- counting it as covered would overstate what this
+    # engine can actually confirm.
     cached = [
         e for e in needed
         if (entry := items.get(str(e.wanted_id))) is not None and entry.get("secondaries")

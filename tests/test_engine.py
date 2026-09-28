@@ -985,9 +985,9 @@ def test_a_longer_source_still_matches_the_pool_name_inside_it():
 
 
 def test_a_cached_item_with_no_secondaries_does_not_count_as_covered():
-    # identify() returns "unknown" for an empty split exactly as it does for a
-    # missing row, so counting it as covered overstated what can be verified.
-    # unverifiable never collapses into a pass.
+    # A row with no secondaries gives nothing to verify against, same as no
+    # cached row at all -- counting it as covered would overstate what
+    # coverage() can actually confirm.
     spec = SpecReference(mythic_bis=[BisEntry("Chest", 555, "Effect Chest", "Kings' Rest")])
     stats = ItemStats(items={"555": {"name": "Effect Chest", "secondaries": {}}})
     result = coverage(spec, stats)
