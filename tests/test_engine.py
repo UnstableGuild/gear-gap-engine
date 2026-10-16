@@ -1080,3 +1080,74 @@ def test_a_pair_is_a_gap_exactly_when_it_has_actionable_targets():
     assert pair.improvable is False
     assert pair.is_gap is True
     assert [t.want for t in pair.targets] == ["Masterwork Sin'dorei Band"]
+
+
+# ------------------------------------------------- RLG-265: the delve kind
+
+DELVE_SOURCE = "Labyrinth of Kindo'jan (megadelve)"  # what the builder writes
+
+
+def test_the_builders_megadelve_source_classifies_as_delve_named_by_the_place():
+    parse = make_source_parser(["King's Rest"], ["Venomous Abyss"])
+    ref = parse(DELVE_SOURCE)
+    assert (ref.kind, ref.name, ref.catalyst) == ("delve", "Labyrinth of Kindo'jan", False)
+
+
+@pytest.mark.parametrize("text", ["Delve", "Delves (Tier 8)", "Bountiful delves"])
+def test_a_guides_own_delve_wording_classifies_too(text):
+    assert make_source_parser([], [])(text).kind == "delve"
+
+
+@pytest.mark.parametrize("text", [
+    "Labyrinth of Kindo'jan",  # the bare place name is the builder's job to canonicalise
+    "Delver's Bounty Trinket", "Mythical Soul Fragment",
+])
+def test_delve_needs_the_marker_not_a_fragment_of_a_word(text):
+    assert make_source_parser([], [])(text).kind != "delve"
+
+
+def test_a_named_place_still_beats_a_delve_word_beside_it():
+    parse = make_source_parser(["King's Rest"], [])
+    assert parse("King's Rest or Delves").kind == "dungeon"
+
+
+def test_a_delve_beats_the_generic_labels():
+    assert make_source_parser([], [])("Delves, Tier Set").kind == "delve"
+
+
+DELVE_PICK = SpecReference(mythic_bis=[
+    BisEntry(slot_label="Feet", item_id=272240, name="Miststalker's Striders",
+             source=DELVE_SOURCE),
+])
+
+DELVE_PAIR = SpecReference(mythic_bis=[
+    BisEntry(slot_label="Ring", item_id=1, name="Charged Sandstone Band",
+             source="King's Rest"),
+    BisEntry(slot_label="Ring", item_id=3, name="A Loa Band", source=DELVE_SOURCE),
+])
+
+
+def test_a_delve_pick_is_reachable_above_the_chest_like_a_craft():
+    """John, 2026-10-16 (RLG-265 decision 2): a megadelve Myth item never
+    comes out of a key, so a key's chest says nothing about it. Gated like
+    a raid, it would almost never show."""
+    worn = {"feet": EquippedItem(slot="feet", item_id=99, name="Old", ilvl=340)}
+    gaps = find_gaps(worn, DELVE_PICK, None, 311, CRAFT_PARSE)
+    targets = targets_of(gaps)
+    assert [(t.want, t.source_kind, t.source) for t in targets] == [
+        ("Miststalker's Striders", "delve", "Labyrinth of Kindo'jan"),
+    ]
+    assert route(gaps) == {}  # reported, never routed
+    assert crafts(gaps) == []
+
+
+def test_a_pairs_delve_want_survives_the_ceiling_and_its_dungeon_want_does_not():
+    gaps = find_gaps(_rings(340), DELVE_PAIR, None, 311, CRAFT_PARSE)
+    assert [t.want for t in targets_of(gaps)] == ["A Loa Band"]
+    assert route(gaps) == {}
+
+
+def test_a_delve_pick_is_not_unsourced():
+    worn = {"feet": EquippedItem(slot="feet", item_id=99, name="Old", ilvl=300)}
+    gaps = find_gaps(worn, DELVE_PICK, None, 311, CRAFT_PARSE)
+    assert unsourced(gaps) == []

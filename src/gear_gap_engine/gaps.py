@@ -124,7 +124,7 @@ REASONS: Mapping[str, str] = {
 }
 
 SourceKind = Literal[
-    "dungeon", "raid", "craft", "catalyst", "vault", "tier", "world", "unknown"
+    "dungeon", "raid", "craft", "catalyst", "vault", "tier", "world", "delve", "unknown"
 ]
 
 # A source the guide names that is neither a place nor a profession.
@@ -193,6 +193,20 @@ _WORLD_DROP = re.compile(r"\bboe\b|\bworld[\s-]?drop\b", re.IGNORECASE)
 # Which of the two labels a world-drop match gets. Checked only once
 # `_WORLD_DROP` has already matched, so this never fires on its own.
 _TRASH_WORDED = re.compile(r"\btrash\b", re.IGNORECASE)
+
+# A delve reward (RLG-265, 2026-10-16): the Labyrinth of Kindo'jan megadelve,
+# which the season pool (dungeons and raids) cannot hold. REPORTED AND NEVER
+# ROUTED, like the kinds above -- there is no key to queue -- and, like a
+# craft, ALWAYS REACHABLE: it never comes out of a key, so a key's chest item
+# level says nothing about whether it can be had, and gating it on that would
+# hide a Myth pick behind almost any worn gear. The reference builder writes
+# the canonical "<Delve> (megadelve)"; a guide's own "Delve"/"Delves" wording
+# classifies too. The name is the text before any parenthesis.
+_DELVE = re.compile(r"\(megadelve\)|\bdelves?\b", re.IGNORECASE)
+
+# Kinds that never come out of a key, so the key-chest reachability gate
+# never applies to them, in a single slot or in a pair.
+_NEVER_GATED: tuple[SourceKind, ...] = ("craft", "delve")
 
 # Anything assess() can return. A paired slot is one row about two slots.
 
@@ -381,7 +395,7 @@ class PairRow:
         """
         if self.improvable:
             return self.missing
-        return tuple(t for t in self.missing if t.source_kind == "craft")
+        return tuple(t for t in self.missing if t.source_kind in _NEVER_GATED)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -672,9 +686,10 @@ def make_source_parser(
     dungeon can be queued repeatedly. A craft is a one-time action, a raid is a
     weekly lockout, the Great Vault is a weekly reward, a bare Catalyst is a
     conversion with no stated location, a bare "Tier Set" is the same conversion
-    with no encounter named either, and a world/BoE drop names no repeatable
-    source at all -- none of those is a farm target, and all of them are
-    reported rather than hidden.
+    with no encounter named either, a world/BoE drop names no repeatable
+    source at all, and a delve is a real place with no key to queue -- none
+    of those is a farm target, and all of them are reported rather than
+    hidden. Delve is checked after raid/dungeon/vault and before Tier Set.
 
     The dungeon and raid lists are season data and are injected, so this stays
     true for any season.
@@ -752,6 +767,11 @@ def make_source_parser(
 
         if vault_key and vault_key in key:
             return SourceRef("vault", GREAT_VAULT, catalyst)
+        if _DELVE.search(raw):
+            # After every named place, before the generic labels: a delve is
+            # a real place, just not one the season pool holds.
+            name = raw.split("(", 1)[0].strip()
+            return SourceRef("delve", name or None, catalyst)
         if _TIER_SET.search(raw):
             # Checked before the bare-Catalyst fallback below: a "Tier Set"
             # row is USUALLY also a Catalyst conversion (original-item set),
@@ -852,8 +872,10 @@ def assess(
         # dungeons: a reader wearing 340 rings still does not own the ring the
         # guide names, and can go and have it made this afternoon. The spec's
         # rule is that hiding a gap makes the tool lie.
+        # A DELVE reward is never gated either, for the same reason: it does
+        # not come out of a key (RLG-265, see `_DELVE`).
         reachable = (
-            source.kind == "craft" or chest_ilvl is None or chest_ilvl >= current.ilvl
+            source.kind in _NEVER_GATED or chest_ilvl is None or chest_ilvl >= current.ilvl
         )
 
         reasons: list[str] = []
